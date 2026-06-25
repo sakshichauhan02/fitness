@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { getLocalDateString } from '@/lib/utils/date';
+import { API_BASE_URL } from '@/lib/api';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { 
@@ -56,7 +57,7 @@ export default function HistoryCalendar({ userId }: HistoryCalendarProps) {
         // Load gamification status
         try {
           const todayStr = getLocalDateString();
-          const res = await fetch(`http://localhost:8000/gamification/status/${user.id}?local_date=${todayStr}`);
+          const res = await fetch(`${API_BASE_URL}/gamification/status/${user.id}?local_date=${todayStr}`);
           if (res.ok) {
             const statusData = await res.json();
             setGamificationStatus(statusData);
@@ -78,7 +79,7 @@ export default function HistoryCalendar({ userId }: HistoryCalendarProps) {
       const endDateStr = cells[cells.length - 1].dateStr;
 
       const response = await fetch(
-        `http://localhost:8000/history/range/${userId}?start_date=${startDateStr}&end_date=${endDateStr}`
+        `${API_BASE_URL}/history/range/${userId}?start_date=${startDateStr}&end_date=${endDateStr}`
       );
       if (response.ok) {
         const data = await response.json();
@@ -114,7 +115,7 @@ export default function HistoryCalendar({ userId }: HistoryCalendarProps) {
     setUpdating(true);
     const newStatus = !dayData.workout_completed;
     try {
-      const res = await fetch('http://localhost:8000/history/daily-update', {
+      const res = await fetch(`${API_BASE_URL}/history/daily-update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -146,7 +147,7 @@ export default function HistoryCalendar({ userId }: HistoryCalendarProps) {
     setUpdating(true);
     const newWater = Math.max(0, parseFloat((dayData.water_intake + amount).toFixed(1)));
     try {
-      const res = await fetch('http://localhost:8000/history/daily-update', {
+      const res = await fetch(`${API_BASE_URL}/history/daily-update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -174,7 +175,7 @@ export default function HistoryCalendar({ userId }: HistoryCalendarProps) {
   const handleSaveWeight = async (weightVal: number | null) => {
     setUpdating(true);
     try {
-      const res = await fetch('http://localhost:8000/history/daily-update', {
+      const res = await fetch(`${API_BASE_URL}/history/daily-update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

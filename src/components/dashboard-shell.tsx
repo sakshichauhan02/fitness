@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { getLocalDateString } from '@/lib/utils/date';
+import { API_BASE_URL } from '@/lib/api';
 import PWAInstallPrompt from '@/components/PWAInstallPrompt';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -48,7 +49,7 @@ export default function DashboardShell({ profile, children }: DashboardShellProp
     async function fetchStreak() {
       try {
         const todayStr = getLocalDateString();
-        const res = await fetch(`http://localhost:8000/gamification/status/${profile.id}?local_date=${todayStr}`);
+        const res = await fetch(`${API_BASE_URL}/gamification/status/${profile.id}?local_date=${todayStr}`);
         if (res.ok) {
           const data = await res.json();
           setStreak(data.current_streak);

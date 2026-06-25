@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { API_BASE_URL } from '@/lib/api';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { 
@@ -76,7 +77,7 @@ export default function WorkoutPlanPage() {
   const fetchWorkoutPlan = async (userProfile: any, customPreference: string = '', soreState: boolean = false) => {
     setGenerating(true);
     try {
-      const response = await fetch('http://localhost:8000/workouts/generate', {
+      const response = await fetch(`${API_BASE_URL}/workouts/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

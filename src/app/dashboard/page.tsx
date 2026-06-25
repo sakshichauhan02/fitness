@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { API_BASE_URL } from '@/lib/api';
 import { createClient } from '@/lib/supabase/server';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import StreakWidget from '@/components/StreakWidget';
@@ -60,15 +61,15 @@ export default async function DashboardPage() {
 
   // Synchronize profile with backend SQL database for gamification targets
   try {
-    const checkRes = await fetch(`http://localhost:8000/profiles/${profile.id}`, { cache: 'no-store' });
+    const checkRes = await fetch(`${API_BASE_URL}/profiles/${profile.id}`, { cache: 'no-store' });
     if (checkRes.status === 404) {
-      await fetch('http://localhost:8000/profiles/', {
+      await fetch(`${API_BASE_URL}/profiles/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(profile)
       });
     } else if (checkRes.ok) {
-      await fetch(`http://localhost:8000/profiles/${profile.id}`, {
+      await fetch(`${API_BASE_URL}/profiles/${profile.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(profile)
@@ -119,7 +120,7 @@ export default async function DashboardPage() {
   // Load gamification status from backend API
   let gamificationStatus: any = null;
   try {
-    const gamificationRes = await fetch(`http://localhost:8000/gamification/status/${profile.id}`, {
+    const gamificationRes = await fetch(`${API_BASE_URL}/gamification/status/${profile.id}`, {
       cache: 'no-store'
     });
     if (gamificationRes.ok) {
@@ -134,7 +135,7 @@ export default async function DashboardPage() {
   let nutritionPlan: any = null;
 
   try {
-    const workoutRes = await fetch('http://localhost:8000/workouts/generate', {
+    const workoutRes = await fetch(`${API_BASE_URL}/workouts/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -148,11 +149,11 @@ export default async function DashboardPage() {
           target_goal: profile.target_goal,
           dietary_identity: profile.dietary_identity,
           equipment_access: profile.equipment_access,
-        },
-        experience_level: 'Intermediate',
-        workout_preference: profile.target_goal,
-      }),
-      next: { revalidate: 3600 }
+          fitness_level: profile.fitness_level,
+          workout_frequency: profile.workout_frequency,
+          weight_unit: profile.weight_unit
+        }
+      })
     });
     if (workoutRes.ok) {
       workoutPlan = await workoutRes.json();
@@ -162,7 +163,7 @@ export default async function DashboardPage() {
   }
 
   try {
-    const nutritionRes = await fetch('http://localhost:8000/nutrition/generate', {
+    const nutritionRes = await fetch(`${API_BASE_URL}/nutrition/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

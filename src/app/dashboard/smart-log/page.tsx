@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { getLocalDateString } from '@/lib/utils/date';
+import { API_BASE_URL } from '@/lib/api';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { 
@@ -96,7 +97,7 @@ export default function SmartLogPage() {
   const fetchHydration = async (weight: number, calculatedTdee: number, workoutDay: boolean, activity: string) => {
     setLoadingRecommendation(true);
     try {
-      const response = await fetch('http://localhost:8000/nutrition/hydration-recommendation', {
+      const response = await fetch(`${API_BASE_URL}/nutrition/hydration-recommendation`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -153,7 +154,7 @@ export default function SmartLogPage() {
     setLoadingGrocery(true);
     try {
       const mealNames = mealHistory.map(m => m.name);
-      const response = await fetch('http://localhost:8000/nutrition/grocery-list', {
+      const response = await fetch(`${API_BASE_URL}/nutrition/grocery-list`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -187,15 +188,15 @@ export default function SmartLogPage() {
           // Synchronize profile with backend SQL database for gamification targets
           if (userProfile) {
             try {
-              const checkRes = await fetch(`http://localhost:8000/profiles/${userProfile.id}`);
+              const checkRes = await fetch(`${API_BASE_URL}/profiles/${userProfile.id}`);
               if (checkRes.status === 404) {
-                await fetch('http://localhost:8000/profiles/', {
+                await fetch(`${API_BASE_URL}/profiles/`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify(userProfile)
                 });
               } else if (checkRes.ok) {
-                await fetch(`http://localhost:8000/profiles/${userProfile.id}`, {
+                await fetch(`${API_BASE_URL}/profiles/${userProfile.id}`, {
                   method: 'PUT',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify(userProfile)
@@ -207,11 +208,11 @@ export default function SmartLogPage() {
               setProfileSynced(true);
             }
           }
-
+ 
           // Load today's meals and water from database, migrating legacy localStorage if needed
           const todayStr = getLocalDateString();
           try {
-            const historyRes = await fetch(`http://localhost:8000/history/day/${user.id}/${todayStr}`);
+            const historyRes = await fetch(`${API_BASE_URL}/history/day/${user.id}/${todayStr}`);
             if (historyRes.ok) {
               const historyData = await historyRes.json();
               if (historyData.meals && historyData.meals.length > 0) {
@@ -264,7 +265,7 @@ export default function SmartLogPage() {
                     const cVal = parseInt(m.carb.replace(/\D/g, ''), 10) || 0;
                     const fVal = parseInt(m.fat.replace(/\D/g, ''), 10) || 0;
                     
-                    const saveRes = await fetch('http://localhost:8000/history/meal', {
+                    const saveRes = await fetch(`${API_BASE_URL}/history/meal`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({
@@ -303,7 +304,7 @@ export default function SmartLogPage() {
                 }
                 
                 // Also initialize daily summary weight and water in database
-                await fetch('http://localhost:8000/history/daily-update', {
+                await fetch(`${API_BASE_URL}/history/daily-update`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
@@ -348,7 +349,7 @@ export default function SmartLogPage() {
           fat: m.fat
         }));
 
-        const response = await fetch('http://localhost:8000/gamification/check-streak', {
+        const response = await fetch(`${API_BASE_URL}/gamification/check-streak`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -400,7 +401,7 @@ export default function SmartLogPage() {
     if (editingMeal) {
       // Edit mode
       try {
-        const response = await fetch(`http://localhost:8000/history/meal/${editingMeal.id}`, {
+        const response = await fetch(`${API_BASE_URL}/history/meal/${editingMeal.id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -439,7 +440,7 @@ export default function SmartLogPage() {
     } else {
       // Add mode
       try {
-        const response = await fetch('http://localhost:8000/history/meal', {
+        const response = await fetch(`${API_BASE_URL}/history/meal`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -483,7 +484,7 @@ export default function SmartLogPage() {
 
   const handleDeleteMeal = async (id: number) => {
     try {
-      const response = await fetch(`http://localhost:8000/history/meal/${id}`, {
+      const response = await fetch(`${API_BASE_URL}/history/meal/${id}`, {
         method: 'DELETE'
       });
       if (response.ok) {
@@ -501,7 +502,7 @@ export default function SmartLogPage() {
     setErrorMsg(null);
 
     try {
-      const response = await fetch('http://localhost:8000/nutrition/analyze-meal', {
+      const response = await fetch(`${API_BASE_URL}/nutrition/analyze-meal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -523,7 +524,7 @@ export default function SmartLogPage() {
       const todayStr = getLocalDateString();
 
       // Save to history in backend SQL database
-      const saveResponse = await fetch('http://localhost:8000/history/meal', {
+      const saveResponse = await fetch(`${API_BASE_URL}/history/meal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -568,7 +569,7 @@ export default function SmartLogPage() {
     
     if (profile && profile.id) {
       try {
-        await fetch('http://localhost:8000/history/daily-update', {
+        await fetch(`${API_BASE_URL}/history/daily-update`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

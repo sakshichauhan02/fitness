@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { getLocalDateString } from '@/lib/utils/date';
+import { API_BASE_URL } from '@/lib/api';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { 
@@ -60,7 +61,7 @@ export default function MyProgressPage() {
       const startStr = getLocalDateString(ninetyDaysAgo);
 
       // 1. Fetch Today's Summary
-      const summaryRes = await fetch(`http://localhost:8000/history/day/${userId}/${todayStr}`);
+      const summaryRes = await fetch(`${API_BASE_URL}/history/day/${userId}/${todayStr}`);
       let todayData = null;
       if (summaryRes.ok) {
         todayData = await summaryRes.json();
@@ -68,14 +69,14 @@ export default function MyProgressPage() {
       }
 
       // 2. Fetch Gamification Status
-      const gamificationRes = await fetch(`http://localhost:8000/gamification/status/${userId}?local_date=${todayStr}`);
+      const gamificationRes = await fetch(`${API_BASE_URL}/gamification/status/${userId}?local_date=${todayStr}`);
       if (gamificationRes.ok) {
         const gamificationData = await gamificationRes.json();
         setGamificationStatus(gamificationData);
       }
 
       // 3. Fetch 90-day History Range
-      const rangeRes = await fetch(`http://localhost:8000/history/range/${userId}?start_date=${startStr}&end_date=${todayStr}`);
+      const rangeRes = await fetch(`${API_BASE_URL}/history/range/${userId}?start_date=${startStr}&end_date=${todayStr}`);
       if (rangeRes.ok) {
         const historyData = await rangeRes.json();
         
@@ -98,7 +99,7 @@ export default function MyProgressPage() {
           
           for (const data of seedData) {
             try {
-              await fetch('http://localhost:8000/history/daily-update', {
+              await fetch(`${API_BASE_URL}/history/daily-update`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -114,7 +115,7 @@ export default function MyProgressPage() {
 
           // Re-fetch history
           try {
-            const reRangeRes = await fetch(`http://localhost:8000/history/range/${userId}?start_date=${startStr}&end_date=${todayStr}`);
+            const reRangeRes = await fetch(`${API_BASE_URL}/history/range/${userId}?start_date=${startStr}&end_date=${todayStr}`);
             if (reRangeRes.ok) {
               const reHistoryData = await reRangeRes.json();
               logs = Object.values(reHistoryData.history)
@@ -168,15 +169,15 @@ export default function MyProgressPage() {
             setSyncingProfile(true);
             try {
               // Ensure profile exists in SQL backend database
-              const checkRes = await fetch(`http://localhost:8000/profiles/${userProfile.id}`);
+              const checkRes = await fetch(`${API_BASE_URL}/profiles/${userProfile.id}`);
               if (checkRes.status === 404) {
-                await fetch('http://localhost:8000/profiles/', {
+                await fetch(`${API_BASE_URL}/profiles/`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify(userProfile)
                 });
               } else if (checkRes.ok) {
-                await fetch(`http://localhost:8000/profiles/${userProfile.id}`, {
+                await fetch(`${API_BASE_URL}/profiles/${userProfile.id}`, {
                   method: 'PUT',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify(userProfile)
@@ -222,7 +223,7 @@ export default function MyProgressPage() {
     if (isNaN(weightNum) || !inputDate.trim() || !profile) return;
 
     try {
-      const response = await fetch('http://localhost:8000/history/daily-update', {
+      const response = await fetch(`${API_BASE_URL}/history/daily-update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -243,7 +244,7 @@ export default function MyProgressPage() {
   const handleDeleteWeight = async (id: string) => {
     if (!profile) return;
     try {
-      const response = await fetch('http://localhost:8000/history/daily-update', {
+      const response = await fetch(`${API_BASE_URL}/history/daily-update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
