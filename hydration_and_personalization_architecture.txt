@@ -1,0 +1,122 @@
+================================================================================
+FITAI: PERSONALIZATION & DYNAMIC HYDRATION ARCHITECTURE AND SYSTEM MAPPING
+================================================================================
+
+This document details the objective, logic steps, file implementations, and 
+connections for the two key personalization features:
+1. "Feeling Sore" Workout Protocol
+2. Dynamic Hydration Tracking
+
+--------------------------------------------------------------------------------
+FEATURE 1: "FEELING SORE" PROTOCOL
+--------------------------------------------------------------------------------
+
+[Objective]
+Allow users to dynamically swap their strenuous workout routines with recovery-focused 
+alternatives (mobility, stretching, active recovery, walking) when feeling sore,
+supported by both Gemini generation and local fallback splits.
+
+[Connections & Data Flow]
+Frontend Page (workout-plan/page.tsx) 
+  ==[POST /workout/generate (feel_sore: true)]==> 
+FastAPI Router (app/routers/workout.py) 
+  ==[generate_workout_plan(feel_sore=True)]==> 
+Service Layer (app/services/gemini.py) 
+  ==[Gemini API / Fallback Mock]==> 
+Structured Recovery Split JSON output returned back to the Frontend.
+
+[File-by-File Implementation Details]
+
+1. backend/app/schemas/workout.py
+   - Objective: Update the API request data structure to hold the soreness state.
+   - Implementation: Added `feel_sore: bool = False` inside `WorkoutRequest`.
+
+2. backend/app/routers/workout.py
+   - Objective: Intercept user workout generation request and extract the soreness state.
+   - Implementation: Read `req.feel_sore` from the request schema and forward it to 
+     the `GeminiService.generate_workout_plan` service call.
+
+3. backend/app/services/gemini.py
+   - Objective: Handle Gemini API prompts and layout structure for recovery days.
+   - Implementation:
+     - Updated prompt generation inside `generate_workout_plan`: when `feel_sore` is True, 
+       instruct Gemini to substitute all heavy weightlifting movements with low-intensity 
+       mobility, stretching, walking, and active recovery routines.
+     - Updated `_get_mock_workout_plan` fallback generator to produce simulated recovery sessions 
+       (e.g., Cat-Cow, Hip Swivels, Child's Pose) if the Gemini API key is offline or rate-limited.
+
+4. src/app/dashboard/workout-plan/page.tsx
+   - Objective: Let users toggle soreness and trigger regeneration.
+   - Implementation:
+     - Added a `feelSore` React state checkbox control on the Workout Plan dashboard page.
+     - Linked toggle updates to include the `{ feel_sore: feelSore }` key inside the body 
+       payload of the `/workout/generate` fetch request.
+
+--------------------------------------------------------------------------------
+FEATURE 2: DYNAMIC HYDRATION TRACKING
+--------------------------------------------------------------------------------
+
+[Objective]
+Calculate and track dynamic daily hydration targets based on the user's weight, TDEE,
+workout vs rest day state, and activity level, utilizing Gemini logic and dynamic fallbacks.
+
+[Connections & Data Flow]
+Frontend Page (smart-log/page.tsx)
+  ==[POST /nutrition/hydration-recommendation (weight, tdee, is_workout, activity)]==>
+FastAPI Router (app/routers/nutrition.py)
+  ==[generate_hydration_recommendation()]==>
+Service Layer (app/services/gemini.py)
+  ==[Gemini API / Dynamic Mock Fallback]==>
+Response returns targeted liters and custom-generated advice text.
+
+[File-by-File Implementation Details]
+
+1. backend/app/schemas/nutrition.py
+   - Objective: Define schemas for dynamic hydration calculations.
+   - Implementation:
+     - Created `HydrationRequest` containing weight, tdee, is_workout_day, and activity_level.
+     - Created `HydrationResponse` containing daily_target_liters and ai_recommendation.
+
+2. backend/app/services/gemini.py
+   - Objective: Calculate targets and construct the advice text.
+   - Implementation:
+     - Added `generate_hydration_recommendation` method.
+     - Formula: Base target is 35ml per kg of bodyweight. Added modifiers (+0.75L for 
+       active workout days, +0.0L to +0.6L depending on activity level, and +0.1L per 
+       500 kcal above 2000 TDEE).
+     - Standard Gemini block queries the `gemini-2.0-flash` model for timing advice.
+     - If Gemini is rate-limited, a comprehensive dynamic builder compiles personalized 
+       text: weight-based baseline tips, workout/rest day instructions, and activity advice.
+
+3. backend/app/routers/nutrition.py
+   - Objective: Expose the backend calculation endpoint.
+   - Implementation: Added `/nutrition/hydration-recommendation` route.
+
+4. src/app/dashboard/smart-log/page.tsx
+   - Objective: Renders hydration progress wheel, input toggles, and AI recommendation panel.
+   - Implementation:
+     - Created states: `isWorkoutDay`, `activityLevel`, `aiRecommendation`, `waterTarget`, 
+       and `tdee`.
+     - Added form controllers inside the Hydration Tracker Card: a checkbox toggle for "Active Workout Day?" 
+       and a dropdown selector for "Activity Level".
+     - Hooked `useEffect` to watch changes to these state controls and fire requests 
+       to `/nutrition/hydration-recommendation` asynchronously.
+     - Rendered calculated `waterTarget` inside the progress drop animation and displayed the 
+       `aiRecommendation` text block directly below the inputs.
+
+--------------------------------------------------------------------------------
+APIs & THIRD PARTY ENGAGEMENTS USED
+--------------------------------------------------------------------------------
+
+1. POST /workout/generate
+   - Type: Internal Backend API (FastAPI)
+   - Function: Returns fully configured dynamic training program based on biometric data.
+
+2. POST /nutrition/hydration-recommendation
+   - Type: Internal Backend API (FastAPI)
+   - Function: Performs metabolic and biometric math calculations for dynamic water targets.
+
+3. Google Gemini API (gemini-2.0-flash)
+   - Type: LLM Orchestration API
+   - Function: Generates personalized coaching recommendations for hydration and workout splits.
+================================================================================

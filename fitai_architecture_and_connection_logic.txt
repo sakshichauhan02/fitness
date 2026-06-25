@@ -1,0 +1,159 @@
+========================================================================
+FITAI - ARCHITECTURAL DESIGN, ROUTING LOGIC & CONNECTION FLOWS
+========================================================================
+
+1. ARCHITECTURAL OVERVIEW
+--------------------------
+FitAI is a Next.js (App Router) web application built to serve as a premium AI-powered physical baseline and athletic engine. It combines Tailwind CSS (v4) and shadcn/ui components for a dark glassmorphic user interface.
+
+To support seamless local sandboxing and production database connections, the app implements a Dual-Mode Architecture:
+- Sandbox/Mock Mode: Triggered when NEXT_PUBLIC_SUPABASE_URL contains 'placeholder-project' (or is empty). Bypasses network calls by utilizing client cookies (for middleware/server validation) and localStorage (for client persistence).
+- Production Mode: Utilizes standard Supabase client/server cookie clients to query a live PostgreSQL database instance.
+
+
+2. THE AUTHENTICATION & ONBOARDING CONNECTION FLOW
+---------------------------------------------------
+This diagram illustrates how a user progresses from signup, through the onboarding guards, to the dashboard.
+
+  [ User Enters ]
+         │
+         ▼
+ ┌───────────────┐
+ │    /login     │  ◄── (Not Logged In? Middleware redirects here)
+ └───────┬───────┘
+         │  (Signup / Login)
+         ▼
+ ┌───────────────┐
+ │  /dashboard   │  ◄── (User is redirected here after auth)
+ └───────┬───────┘
+         │
+         ├─► [ Server layout.tsx intercepts ]
+         │         │
+         │         ├──► [ Onboarded == false? ] ──► Redirect to /onboarding
+         │         │
+         │         └──► [ Onboarded == true?  ] ──► Render /dashboard page
+         │
+         ▼
+ ┌───────────────┐
+ │  /onboarding  │  ◄── (User fills out 5 biometric steps)
+ └───────┬───────┘
+         │
+         │ (Completes form: writes database profiles or mock cookies)
+         ▼
+ ┌───────────────┐
+ │  /dashboard   │  ◄── (Calculates resting BMR/TDEE & renders tabs)
+ └───────────────┘
+
+
+3. INTEGRATED LOGIC FLOWS BY STEP
+----------------------------------
+
+STEP A: User Authentication (/login)
+- Objective: Authenticate user using Email/Password.
+- Sandbox Logic: On signup, creates mock user details in localStorage, sets 'fitai-mock-session=true' session cookie, and writes an uncompleted profile state ('onboarded=false') to 'fitai-mock-profile' cookie.
+- Live Database Logic: Calls Supabase Auth to register user. An database trigger function (handle_new_user) in 'schema.sql' automatically inserts a corresponding profile row with 'onboarded = false' linked to the auth ID.
+
+STEP B: Auth Path Protection (src/middleware.ts)
+- Objective: Gate access to restricted routes.
+- Sandbox Logic: Reads 'fitai-mock-session' cookie. Redirects user to '/login' if missing and trying to load protected routes, or to '/dashboard' if logged-in user hits login screen.
+- Live Database Logic: Instantiates Server Supabase Client, verifies token signature via '.auth.getUser()', updates cookies, and redirects accordingly.
+
+STEP C: Onboarding Redirection Guard (src/app/dashboard/layout.tsx)
+- Objective: Enforce biometrics input.
+- Sandbox Logic: Server Component layout reads 'fitai-mock-profile' cookie. If it does not exist or has 'onboarded = false', calls Next.js 'redirect("/onboarding")'.
+- Live Database Logic: Queries the Postgres 'profiles' table. If the row for the logged-in ID has 'onboarded = false', redirects to onboarding.
+
+STEP D: Multi-Step Profiling (src/app/onboarding/page.tsx)
+- Objective: Build physical baseline profile.
+- Screens:
+  - Screen 1: Name, gender select (Male, Female, Other), Date of Birth.
+  - Screen 2: Metric values. Standardizes heights to cm and weights to kg, supporting dynamic units toggle (cm vs ft/in, and kg vs lbs).
+  - Screen 3: Physique baseline select card.
+  - Screen 4: Aesthetic target select card.
+  - Screen 5: Diet identities and equipment options.
+- On completion: Updates 'profiles' database row (or writes completed cookie), sets 'onboarded = true', and redirects to '/dashboard'.
+
+STEP E: Metric Calculations & Dashboard Summary (src/app/dashboard/page.tsx)
+- Objective: Compute and visualize personal biometric goals.
+- Age Calculation:
+  Age = Floor( (CurrentTime - BirthTime) / 31,557,600,000 ms )
+- BMR (Basal Metabolic Rate) Calculation (Mifflin-St Jeor):
+  - Men:   BMR = 10 * Weight(kg) + 6.25 * Height(cm) - 5 * Age(yrs) + 5
+  - Women: BMR = 10 * Weight(kg) + 6.25 * Height(cm) - 5 * Age(yrs) - 161
+  - Other: BMR = 10 * Weight(kg) + 6.25 * Height(cm) - 5 * Age(yrs) - 78
+- TDEE (Total Daily Energy Expenditure) Calculation:
+  Estimated TDEE = BMR * 1.375 (Moderate Activity Co-efficient)
+- Target Calorie Adjustments based on Aesthetic Goal:
+  - V-Taper Focus: TDEE - 150 kcal (Recomposition deficit)
+  - Lean Bulk: TDEE + 300 kcal (Surplus)
+  - Aggressive Cut: TDEE - 500 kcal (Fat-loss deficit)
+  - Strength & Performance: TDEE + 100 kcal (Strength pathway)
+- Daily Macronutrients Recommendation:
+  - Protein: 2.0g per kg of bodyweight (1g = 4 kcal)
+  - Fats: 25% of Target Calorie limit (1g = 9 kcal)
+  - Carbs: Remainder of calories divided by 4 (1g = 4 kcal)
+
+
+4. DIRECTORY & FILE BREAKDOWN
+------------------------------
+
+[ schema.sql ]
+- Objective: Initializes PostgreSQL database tables in Supabase.
+- Implementation: Creates 'profiles' table, enables Row Level Security (RLS), adds owner read/write policies, and installs the 'handle_new_user()' trigger.
+
+[ src/lib/supabase/client.ts ]
+- Objective: Creates client-side instance of Supabase Client.
+- Implementation: Checks if NEXT_PUBLIC_SUPABASE_URL contains 'placeholder-project'. If so, polyfills client methods (auth.getUser, auth.signInWithPassword, auth.signUp, auth.signOut, from.select, from.upsert) to read/write from localStorage and cookies.
+
+[ src/lib/supabase/server.ts ]
+- Objective: Creates server-side instance of Supabase Client.
+- Implementation: In Sandbox Mode, reads cookies ('fitai-mock-session', 'fitai-mock-profile') to return mock sessions and profile summaries. In Live Mode, initializes standard Server Client utilizing HTTP header cookies.
+
+[ src/middleware.ts ]
+- Objective: Request session refresher and path guardian.
+- Connection: Intercepts all paths except static assets, handles redirect checks, and updates auth cookies.
+
+[ src/app/layout.tsx ]
+- Objective: Roots layout structure.
+- Connection: Configures Geist font family styling and adds the default class 'dark' to render dark mode globally.
+
+[ src/app/page.tsx ]
+- Objective: Workspace entry point.
+- Connection: Performs server-side Next.js redirect to '/dashboard' immediately.
+
+[ src/app/login/page.tsx ]
+- Objective: Auth interface.
+- Connection: Connects form submit handlers to supabase.auth methods. Triggers redirections to /dashboard. Displays Sandbox warning banner if Sandbox Mode is active.
+
+[ src/app/onboarding/page.tsx ]
+- Objective: Profiling wizard screen controller.
+- Connection: Converts imperial inputs to metric standards, updates profile tables on the Supabase client, and triggers route forward to `/dashboard` on step 5 validation.
+
+[ src/app/dashboard/layout.tsx ]
+- Objective: Dashboard entry gate layout.
+- Connection: Evaluates user onboarding status server-side. Renders '<DashboardShell>' component passing down authorized profile props, or redirects to `/onboarding`.
+
+[ src/components/dashboard-shell.tsx ]
+- Objective: Dashboard wrap frame.
+- Connection: Houses Left Sidebar links (Overview, AI Smart Log, Workout Plan, Progress, Settings) highlighting active tabs via usePathname(). Houses Top Header consistency streak display, and a floating "Add Meal" button that displays a mock caloric logger form modal.
+
+[ src/app/dashboard/page.tsx ]
+- Objective: Main metrics hub dashboard.
+- Connection: Performs age, BMR, TDEE, recommended calories, and recommended macros math server-side, rendering responsive diagnostic cards, metric bars, and data grids.
+
+[ src/app/dashboard/smart-log/page.tsx ]
+- Objective: Meal, calories, and water logs.
+- Connection: Implements a text area supporting natural language meal descriptions and hydration logging buttons.
+
+[ src/app/dashboard/workout-plan/page.tsx ]
+- Objective: Routines and exercises.
+- Connection: Renders target split routines, day progression checklists, and equipment summaries.
+
+[ src/app/dashboard/my-progress/page.tsx ]
+- Objective: Progression tracking dashboards.
+- Connection: Renders weight trends over time, streak checks, and body fat indexes.
+
+[ src/app/dashboard/settings/page.tsx ]
+- Objective: Account management.
+- Connection: Renders forms to adjust personal names, biometrics, measurement units, and contains the Danger Zone profile reset action.
+========================================================================

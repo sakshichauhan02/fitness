@@ -1,0 +1,281 @@
+================================================================================
+FITAI TECHNICAL DOCUMENTATION: TIMEZONE-AWARE RESET & PROGRESSIVE WEB APP (PWA)
+================================================================================
+
+This document outlines the objectives, architectural design, API specifications,
+file-by-file implementations, and connection logic for the Timezone-Aware Daily 
+Reset and Progressive Web App (PWA) features implemented in FitAI.
+
+--------------------------------------------------------------------------------
+1. OBJECTIVES & ARCHITECTURAL SUMMARY
+--------------------------------------------------------------------------------
+The primary goals of these implementations are:
+1. Timezone-Aware Daily Reset: Decouple the application from server-side UTC clocks
+   to ensure that all user-facing metrics (calories, macros, water logs, and streaks)
+   reset precisely at 12:00 AM in the user's local timezone.
+2. Progressive Web App (PWA): Provide a native app experience on mobile (iOS/Android)
+   and desktop platforms, including offline support, standalone display mode, 
+   caching strategies, and an interactive installation banner.
+
+--------------------------------------------------------------------------------
+2. SYSTEM CONNECTION FLOW
+--------------------------------------------------------------------------------
+Below is the communication flow between the frontend (Next.js Client) and the
+backend (FastAPI Server running SQLite/PostgreSQL):
+
++-------------------------------------------------------------------------------+
+|                             CLIENT-SIDE BROWSER                               |
+|                                                                               |
+| +------------------------+   +--------------------+   +---------------------+ |
+| |   PWAInstallPrompt     |   |  smart-log / page  |   |  my-progress / page | |
+| | (Intercepts install &  |   | (Logs meals/water  |   | (Logs weigh-ins and | |
+| |  guides iOS/Android)   |   |  via local dates)  |   |  biometrics)        | |
+| +-----------+------------+   +---------+----------+   +----------+----------+ |
+|             |                          |                         |            |
+|             | (Install Trigger)        | (Sync/Log calls)        | (Weigh-ins)|
+|             v                          v                         v            |
+| +---------------------------------------------------------------------------+ |
+| |                                 date.ts                                   | |
+| |        (Generates YYYY-MM-DD strings based on local timezone)             | |
+| +---------------------------------------------------------------------------+ |
+|                                        |                                      |
+|                                        | HTTP REST Requests                   |
+|                                        | (with ?local_date=YYYY-MM-DD)        |
++----------------------------------------+--------------------------------------+
+                                         |
+                                         v
++-------------------------------------------------------------------------------+
+|                             BACKEND API SERVER                                |
+|                                                                               |
+|                   +-----------------------------------------+                 |
+|                   |        gamification.py (Router)         |                 |
+|                   |  - Computes MSJ Calorie/Protein targets |                 |
+|                   |  - Evaluates streaks against local date |                 |
+|                   |  - Runs daily decay checks on requests  |                 |
+|                   +--------------------+--------------------+                 |
+|                                        |                                      |
+|                                        v                                      |
+|                   +-----------------------------------------+                 |
+|                   |             SQL DATABASE                |                 |
+|                   |  - user_streaks (streaks state)         |                 |
+|                   |  - streak_history (daily completions)   |                 |
+|                   |  - daily_summaries (metrics archive)    |                 |
+|                   +-----------------------------------------+                 |
++-------------------------------------------------------------------------------+
+
+--------------------------------------------------------------------------------
+3. API SPECIFICATIONS
+--------------------------------------------------------------------------------
+
+The following endpoints in the FastAPI backend are utilized:
+
+A. GET /gamification/status/{user_id}
+   - Objective: Retrieves the user's current streak, longest streak, unlocked badges,
+     and today's logged macro totals vs target macro targets.
+   - Query Parameter: `local_date` (Format: `YYYY-MM-DD`). 
+   - Logic: Evaluates whether the user's streak has decayed based on their local date
+     (re-verifying if they missed targets on the local calendar day yesterday).
+
+B. POST /gamification/check-streak
+   - Objective: Evaluates and updates the streak status based on logged meals.
+   - Body Parameters:
+     - `user_id` (UUID): Active user identifier.
+     - `meals` (List): Array of logged food items with macros.
+     - `local_date` (date, Optional): The client's local date string.
+   - Logic: Calculates the total calories and protein logged. If they fall within 
+     a ±10% tolerance window of the dynamically calculated Mifflin-St Jeor targets
+     for the client's local date, the streak is secured. Reverts or increments the
+     streak counter in the database based on the results.
+
+C. POST /history/daily-update
+   - Objective: Updates daily tracking metrics (water intake, weight, workouts).
+   - Body Parameters:
+     - `user_id` (UUID): Active user identifier.
+     - `date` (string): The client's local date string.
+     - `water_intake` (float, Optional): Liters of water logged.
+     - `weight` (float, Optional): Current weight in kg.
+
+--------------------------------------------------------------------------------
+4. FILE-BY-FILE IMPLEMENTATION & LOGIC STEPS
+--------------------------------------------------------------------------------
+
+================================================================================
+A. FRONTEND UTILITIES & PWA CONFIGURATION
+================================================================================
+
+1. src/lib/utils/date.ts
+   - Objective: Generate timezone-safe local date strings.
+   - Implementation:
+     - `getLocalDateString(date = new Date())`: Extracts the calendar components
+       (`getFullYear()`, `getMonth() + 1`, `getDate()`) and joins them into a 
+       `YYYY-MM-DD` format. This bypasses `toISOString().split('T')[0]` which 
+       shifts dates forward/backward depending on the user's timezone offset.
+     - `getYesterdayLocalDateString()`: Subtracts 24 hours using local date
+       manipulation and returns yesterday's local `YYYY-MM-DD` string.
+
+2. public/manifest.json
+   - Objective: Web App Manifest file telling browsers how the application behaves
+     when installed as a native app.
+   - Implementation:
+     - Sets `display: "standalone"` to hide the browser URL bar and navigation controls.
+     - Forces `orientation: "portrait"` for consistent mobile viewing.
+     - Configures brand colors (`background_color: "#ffffff"`, `theme_color: "#4f46e5"`).
+     - Declares high-resolution icons located at `/icons/icon-192x192.png` and
+       `/icons/icon-512x512.png` with purpose attributes `any maskable` to support
+       different launcher layouts.
+
+3. public/sw.js
+   - Objective: The Service Worker script running in the browser background.
+   - Implementation:
+     - Cache-First Strategy for static resources: Caches the offline fallback shell, 
+       manifest, and local vector assets (`/window.svg`, `/globe.svg`, `/file.svg`).
+     - Network-First Fallback-to-Cache Strategy for HTML navigations: Attempts to
+       retrieve pages from the network. If the network is unavailable, it checks
+       the cache for a matching page.
+     - Offline Shell Fallback: If both network and cache fail for a page request,
+       it serves `/offline.html` from the static cache.
+     - Exclusion Logic: Bypasses caching for webpack hot-reload logs, Chrome extensions,
+       and database mutating API requests on port `8000` to prevent data mismatching.
+
+4. public/offline.html
+   - Objective: Branded static HTML file displayed when the user is disconnected.
+   - Implementation:
+     - Written with vanilla CSS and inline elements (independent of external CDNs).
+     - Incorporates Outfit and Plus Jakarta Sans fonts.
+     - Displays a cloud-offline icon and a structured notice telling the user
+       that their local modifications will sync once network connectivity is restored.
+
+5. src/components/PWAClientRegister.tsx
+   - Objective: Client-side component to handle service worker registration.
+   - Implementation:
+     - Wrapped as a `'use client'` component.
+     - Runs an on-mount `useEffect` that checks if `serviceWorker` is supported
+       in the browser.
+     - Registers `/sw.js` on window load to ensure it does not block the initial
+       page load performance.
+
+6. src/app/layout.tsx
+   - Objective: Next.js root layout file.
+   - Implementation:
+     - Appends the manifest file link (`manifest: "/manifest.json"`) and Apple
+       mobile meta tags (`capable: true`, `statusBarStyle: "default"`) to the metadata.
+     - Sets the mobile viewport constraints (`themeColor: "#4f46e5"`, `userScalable: false`,
+       `maximumScale: 1`) to deliver a native app aesthetic.
+     - Renders the `<PWAClientRegister />` script in the HTML body.
+
+7. src/components/PWAInstallPrompt.tsx
+   - Objective: Responsive install banner guiding the user to install the application.
+   - Implementation:
+     - Checks `display-mode: standalone` to verify if the app is already installed.
+     - Listens for the browser's native `beforeinstallprompt` event, intercepts it
+       to prevent default prompts, and displays a custom slide-in card banner.
+     - Detects iOS Safari browsers. Since iOS Safari does not support native install
+       prompts, it automatically displays a custom tooltip instruction instructing
+       the user to click the Safari "Share" button and select "Add to Home Screen".
+     - Saves the dismissed state in `sessionStorage` under `fitai_pwa_dismissed`
+       if the user clicks "Maybe Later" or dismisses the prompt.
+
+================================================================================
+B. CORE CLIENT PAGES
+================================================================================
+
+8. src/components/dashboard-shell.tsx
+   - Objective: Main navigation sidebar and header wrapper.
+   - Implementation:
+     - Retrieves the active user's streak status.
+     - Refactored to call the backend status API by passing the local timezone date
+       (`?local_date=${getLocalDateString()}`) ensuring the header streak counter is
+       accurate on mount.
+     - Renders the `<PWAInstallPrompt />` banner at the bottom of the layout structure.
+
+9. src/app/dashboard/smart-log/page.tsx
+   - Objective: Log meals and track water intake.
+   - Implementation:
+     - Replaced all raw JavaScript UTC date extractions with `getLocalDateString()`.
+     - Passes `local_date` in the JSON body payload when invoking `POST /gamification/check-streak`
+       to ensure streak increments, targets, and updates are computed relative to the local date.
+     - Synchronizes water increments by sending the local date string to `/history/daily-update`.
+
+10. src/app/dashboard/my-progress/page.tsx
+    - Objective: Log daily weight biometrics and view trend graphs.
+    - Implementation:
+      - Uses `getLocalDateString()` for today's date calculations and range bounds.
+      - Calls the backend status API passing the client's local date as a query parameter.
+      - Saves daily biometrics by passing the local date string in the body of
+        `/history/daily-update` requests.
+
+11. src/components/HistoryCalendar.tsx
+    - Objective: Monthly grid visualization showing daily tracking compliance.
+    - Implementation:
+      - Refactored to pass the client's local date (`?local_date=${getLocalDateString()}`)
+        when fetching current gamification details on mount to synchronize indicators.
+
+================================================================================
+C. BACKEND SCHEMA & ROUTER IMPLEMENTATION
+================================================================================
+
+12. backend/app/schemas/gamification.py
+    - Objective: Pydantic schemas for gamification validation.
+    - Implementation:
+      - Added `local_date: Optional[date] = None` to the `CheckStreakRequest` schema,
+        allowing the API to read the client's local date string during streak validations.
+
+13. backend/app/routers/gamification.py
+    - Objective: Router managing streak incrementations, resets, and decays.
+    - Implementation:
+      - Refactored `GET /status/{user_id}` to accept an optional `local_date: date` query parameter.
+        Uses this date as "today" for streak decay calculations.
+      - Refactored `POST /check-streak` to read `local_date` from the payload.
+      - The streak decay logic (`check_and_decay_streak`) compares the user's `last_completed_date`
+        against yesterday's date relative to the passed `local_date` instead of the server's UTC
+        `date.today()`. This guarantees that if a user in India (UTC+5:30) crosses midnight, their
+        streak status resets or decays relative to India's calendar date, not UTC.
+      - **Bug Fixed**: Corrected the `TypeError` inside `POST /check-streak` by passing the local date
+        variable `today` into `check_and_decay_streak(streak, today)`.
+
+--------------------------------------------------------------------------------
+5. CHRONOLOGY OF OPERATIONS
+--------------------------------------------------------------------------------
+
+A. WHEN A USER LOADS THE DASHBOARD (ONLINE):
+   1. The layout mounts the `PWAClientRegister` component. It checks if the service 
+      worker is registered; if not, it registers `/sw.js` in the browser.
+   2. The `dashboard-shell` and dashboard sub-pages fetch the user's gamification 
+      status via `GET /gamification/status/{user_id}?local_date=YYYY-MM-DD`.
+   3. The server receives the client's local date. It checks if the user's streak 
+      state in the database has decayed based on this local date. It returns the
+      synchronized streak count, logged totals, and targets.
+   4. The `PWAInstallPrompt` checks if the application is running in standalone mode. 
+      If it is not, and no prior session dismissal exists, it displays the custom 
+      installation card.
+
+B. WHEN A USER LOGS A MEAL:
+   1. The user logs a meal inside the "AI Smart Log" page.
+   2. The client calculates the local date string using `getLocalDateString()`.
+   3. The client saves the meal locally in `localStorage` under a key bound to the 
+      local date string, and sends a POST request to `/history/meal` and
+      `/gamification/check-streak`, passing `local_date` in the body.
+   4. The backend receives the request, updates the local database, evaluates the
+      macro totals against the Mifflin-St Jeor targets for that local date, and 
+      either increments, maintains, or reverts the streak. It returns the updated
+      gamification state to the client.
+
+C. WHEN THE CLOCK CROSSES 12:00 AM LOCAL TIME:
+   1. The client's local calendar date shifts (e.g., from June 25 to June 26).
+   2. The utility `getLocalDateString()` starts returning the new date string.
+   3. Any subsequent page refresh or state change fetches database metrics for the 
+      new date.
+   4. Since no history exists yet for the new date, the dashboard totals (calories, 
+      macros, water) reset to zero. The backend status endpoint evaluates the streak
+      decay based on the new local date, checking if the user met their targets on
+      the yesterday date that just elapsed.
+
+D. WHEN A USER GOES OFFLINE:
+   1. The browser network connection drops.
+   2. If the user refreshes or navigates to a new page, the Service Worker (`sw.js`) 
+      intercepts the navigation request.
+   3. Since the network is unavailable and the page may not be cached, the service 
+      worker serves the static `/offline.html` page.
+   4. The offline shell loads immediately, displaying the styled notice indicating 
+      that offline mode is active and details are preserved.
+================================================================================

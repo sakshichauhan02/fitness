@@ -1,0 +1,138 @@
+========================================================================
+FITAI - TECHNICAL ARCHITECTURE, FILE IMPLEMENTATIONS & CONNECTION LOGICS
+========================================================================
+
+This document details the functional logic, API usage, and connection flows across the frontend (Next.js) and backend (FastAPI) components of the FitAI application.
+
+------------------------------------------------------------------------
+1. CORE ARCHITECTURAL FLOW & LOGIC STEPS
+------------------------------------------------------------------------
+
+* STEP 1: Authentication Gateway (/login)
+  - Objective: Authenticate user access.
+  - Sandbox/Mock Flow: Sets client-side cookies ('fitai-mock-session=true' and 'fitai-mock-profile') to bypass API databases.
+  - Production Flow: Uses Supabase Auth to register or log in the user, linking their session to a live PostgreSQL backend.
+
+* STEP 2: Middleware Route Guard (src/middleware.ts)
+  - Objective: Protect dashboard routes.
+  - Implementation: Intercepts requests, validates either the mock cookies (Sandbox) or Supabase JWT tokens (Production), and routes unauthenticated users back to '/login'.
+
+* STEP 3: Onboarding Verification (src/app/dashboard/layout.tsx)
+  - Objective: Ensure every logged-in user has biometric data.
+  - Logic: Checks the database or mock cookies for 'onboarded = true'. If false, automatically redirects the user to `/onboarding`.
+
+* STEP 4: Onboarding Form (src/app/onboarding/page.tsx)
+  - Objective: Collect and standardise biometric information (Height in cm, Weight in kg, Target goals, Dietary preferences, and Equipment access).
+  - Calculations: Converts units (lbs to kg, ft/in to cm) and saves the profile.
+
+* STEP 5: Metric Computations (src/app/dashboard/page.tsx)
+  - Objective: Calculate BMR, TDEE, Calories, and Macronutrient splits.
+  - Equations:
+    * BMR (Mifflin-St Jeor):
+      - Men: 10 * Weight(kg) + 6.25 * Height(cm) - 5 * Age(yrs) + 5
+      - Women: 10 * Weight(kg) + 6.25 * Height(cm) - 5 * Age(yrs) - 161
+      - Other: 10 * Weight(kg) + 6.25 * Height(cm) - 5 * Age(yrs) - 78
+    * TDEE: BMR * 1.375 (Moderate Activity Coefficient)
+    * Calorie Target:
+      - V-Taper Focus: TDEE - 150 kcal
+      - Lean Bulk: TDEE + 300 kcal
+      - Aggressive Cut: TDEE - 500 kcal
+      - Strength: TDEE + 100 kcal
+    * Macronutrients:
+      - Protein: 2.0g per kg of bodyweight
+      - Fats: 25% of Target Calories (9 kcal/g)
+      - Carbs: Remainder of Calories (4 kcal/g)
+
+------------------------------------------------------------------------
+2. APIS USED & CONNECTION LOGIC
+------------------------------------------------------------------------
+
+* FRONTEND TO BACKEND CONNECTION:
+  - The Next.js frontend calls the FastAPI backend (running on `http://localhost:8000`) using standard `fetch` API requests.
+  - The backend CORS middleware allows origins from `http://localhost:3000`.
+
+* BACKEND TO AI SERVICES (Gemini API):
+  - Model: `gemini-2.5-flash`
+  - Integration: Calls `google.generativeai.GenerativeModel` using structured JSON outputs (`generation_config={"response_mime_type": "application/json"}`).
+  - Fallbacks: In the absence of a configured `GEMINI_API_KEY`, the server falls back to returning structured mock data mirroring the expected response models.
+
+* BACKEND ROUTERS & ENDPOINTS:
+  1. Profile Endpoints (`/profile`)
+     - POST `/profile/sync`: Synchronises profile data from frontend state.
+  2. Workout Endpoints (`/workouts`)
+     - POST `/workouts/generate`: Sends user profile details to Gemini to generate weekly splits, daily exercise plans, and coaching tips.
+  3. Nutrition Endpoints (`/nutrition`)
+     - POST `/nutrition/generate`: Generates personalized meals and food swaps matching daily calorie and macro goals.
+     - POST `/nutrition/analyze-meal`: Uses natural language processing to estimate calories, ingredients, and macro splits of an described meal.
+
+------------------------------------------------------------------------
+3. DETAILED FILE BREAKDOWN (FRONTEND & BACKEND)
+------------------------------------------------------------------------
+
+===================================
+FRONTEND FILES (Next.js - src/)
+===================================
+
+* [src/middleware.ts](file:///c:/Users/saksh/OneDrive/Desktop/fitai/src/middleware.ts)
+  - Objective: Route/auth protection.
+  - Implementation: Client cookie verification and redirection.
+
+* [src/app/layout.tsx](file:///c:/Users/saksh/OneDrive/Desktop/fitai/src/app/layout.tsx)
+  - Objective: Global styles and font loaders.
+  - Implementation: Imports Inter/Geist fonts, configures Tailwind v4, forces class `dark` for dark theme.
+
+* [src/app/page.tsx](file:///c:/Users/saksh/OneDrive/Desktop/fitai/src/app/page.tsx)
+  - Objective: Landing/redirect helper.
+  - Implementation: Triggers an immediate redirect to `/dashboard`.
+
+* [src/app/login/page.tsx](file:///c:/Users/saksh/OneDrive/Desktop/fitai/src/app/login/page.tsx)
+  - Objective: Sign-in/Sign-up UI.
+  - Implementation: Standard credential inputs; interacts with Supabase client to create/retrieve credentials.
+
+* [src/app/onboarding/page.tsx](file:///c:/Users/saksh/OneDrive/Desktop/fitai/src/app/onboarding/page.tsx)
+  - Objective: Multi-step onboarding form.
+  - Implementation: Captures step-by-step health goals, biometrics, weight conversions, and posts to profiles.
+
+* [src/app/dashboard/layout.tsx](file:///c:/Users/saksh/OneDrive/Desktop/fitai/src/app/dashboard/layout.tsx)
+  - Objective: Authentication and onboarding state layout guard.
+  - Implementation: Checks profile database row onboard status. Returns Dashboard navigation shell or redirects to onboarding.
+
+* [src/app/dashboard/page.tsx](file:///c:/Users/saksh/OneDrive/Desktop/fitai/src/app/dashboard/page.tsx)
+  - Objective: Core overview metrics page.
+  - Implementation: Computes Mifflin-St Jeor math, displays BMR/TDEE ratios, calorie charts, and macro bars.
+
+* [src/app/dashboard/workout-plan/page.tsx](file:///c:/Users/saksh/OneDrive/Desktop/fitai/src/app/dashboard/workout-plan/page.tsx)
+  - Objective: Workout dashboard.
+  - Implementation: Fetches personalized weekly schedules and workouts from `/workouts/generate`.
+
+* [src/app/dashboard/smart-log/page.tsx](file:///c:/Users/saksh/OneDrive/Desktop/fitai/src/app/dashboard/smart-log/page.tsx)
+  - Objective: Interactive nutrition and meal tracking log.
+  - Implementation: User types a text description of a meal (e.g. "I ate 2 scrambled eggs and toast") and fetches `/nutrition/analyze-meal` to dynamically log calorie structures.
+
+===================================
+BACKEND FILES (FastAPI - backend/)
+===================================
+
+* [backend/app/main.py](file:///c:/Users/saksh/OneDrive/Desktop/fitai/backend/app/main.py)
+  - Objective: Main API Application router module.
+  - Implementation: Sets up CORS policies, initializes routers, and serves API documentation at `/docs`.
+
+* [backend/app/config.py](file:///c:/Users/saksh/OneDrive/Desktop/fitai/backend/app/config.py)
+  - Objective: Load and validation of environmental variables.
+  - Implementation: Uses `pydantic_settings` to read `.env` values (DATABASE_URL, GEMINI_API_KEY).
+
+* [backend/app/services/gemini.py](file:///c:/Users/saksh/OneDrive/Desktop/fitai/backend/app/services/gemini.py)
+  - Objective: Generative AI communication logic.
+  - Implementation: Builds highly structured prompts for Gemini 2.5 Flash, forces JSON output schema, parses response models, and serves offline mock models if key is missing.
+
+* [backend/app/routers/workout.py](file:///c:/Users/saksh/OneDrive/Desktop/fitai/backend/app/routers/workout.py)
+  - Objective: Workout routes controller.
+  - Implementation: Listens to POST calls, parses schemas, calls `GeminiService.generate_workout_plan`, and returns a detailed split response.
+
+* [backend/app/routers/nutrition.py](file:///c:/Users/saksh/OneDrive/Desktop/fitai/backend/app/routers/nutrition.py)
+  - Objective: Meal logging and advice router.
+  - Implementation: Integrates nutrition generation splits and meal analyzer algorithms.
+
+* [backend/app/schemas/](file:///c:/Users/saksh/OneDrive/Desktop/fitai/backend/app/schemas)
+  - Objective: Data validation schemas.
+  - Implementation: Pydantic schemas validating correct data exchange formats between Frontend and Backend APIs.
