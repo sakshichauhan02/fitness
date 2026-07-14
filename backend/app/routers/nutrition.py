@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models.profile import Profile
 from typing import List
 from pydantic import BaseModel
-from ..schemas.nutrition import NutritionRequest, NutritionResponse, MealAnalyzeRequest, MealAnalyzeResponse, GroceryListResponse, HydrationRequest, HydrationResponse
+from ..schemas.nutrition import NutritionRequest, NutritionResponse, MealAnalyzeRequest, MealAnalyzeResponse, GroceryListResponse, HydrationRequest, HydrationResponse, VoiceMealLogResponse, OCRMealAnalysisResponse
 from ..services.gemini import GeminiService
 
 router = APIRouter(
@@ -125,5 +125,45 @@ def get_hydration_recommendation(req: HydrationRequest):
         is_workout_day=req.is_workout_day,
         activity_level=req.activity_level
     )
+
+
+@router.post("/voice-log", response_model=VoiceMealLogResponse)
+async def voice_log_meal(
+    file: UploadFile = File(...),
+    meal_type: str = Form("Lunch")
+):
+    content_type = file.content_type or "audio/webm"
+    try:
+        audio_content = await file.read()
+        result = GeminiService.analyze_voice_meal(
+            audio_content=audio_content,
+            mime_type=content_type,
+            meal_type=meal_type
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to process voice recording: {str(e)}"
+        )
+
+
+@router.post("/analyze-image", response_model=OCRMealAnalysisResponse)
+async def analyze_image_route(
+    file: UploadFile = File(...)
+):
+    content_type = file.content_type or "image/jpeg"
+    try:
+        image_content = await file.read()
+        result = GeminiService.analyze_meal_image(
+            image_bytes=image_content,
+            mime_type=content_type
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to process image: {str(e)}"
+        )
 
 

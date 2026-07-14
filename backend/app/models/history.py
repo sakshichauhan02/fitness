@@ -12,6 +12,7 @@ class DailySummary(Base):
     weight = Column(Numeric, nullable=True)
     water_intake = Column(Numeric, default=0.0, nullable=False)
     workout_completed = Column(Boolean, default=False, nullable=False)
+    sleep_hours = Column(Numeric, default=8.0, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 

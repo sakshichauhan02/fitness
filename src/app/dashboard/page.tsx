@@ -209,7 +209,7 @@ export default async function DashboardPage() {
           </p>
         </div>
 
-        <div className="bg-white border border-slate-200/80 p-4 rounded-xl shadow-sm space-y-3">
+        <div className="bg-white border border-slate-200/80 p-4 rounded-xl shadow-sm space-y-3 transition-all duration-300 hover:shadow-md hover:border-slate-300 hover:scale-[1.005]">
           <div className="flex justify-between items-center text-xs">
             <span className="font-semibold text-slate-700">Target Weight Progress</span>
             <span className="text-slate-500 font-medium">
@@ -234,7 +234,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* AI Coach Insights Section */}
-      <Card className="bg-white border border-slate-200 shadow-sm rounded-xl overflow-hidden">
+      <Card className="bg-white border border-slate-200 shadow-sm rounded-xl overflow-hidden transition-all duration-300 hover:shadow-md hover:border-slate-300 hover:scale-[1.002]">
         <CardHeader className="pb-2 flex flex-row items-center gap-2 space-y-0">
           <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-650">
             <MessageSquare className="w-4 h-4" />
@@ -284,7 +284,7 @@ export default async function DashboardPage() {
         <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Daily Target Allocation</h2>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Calories */}
-          <Card className="bg-white border-slate-200 shadow-sm rounded-xl">
+          <Card className="bg-white border-slate-200 shadow-sm rounded-xl transition-all duration-300 hover:shadow-md hover:border-slate-300 hover:scale-[1.01]">
             <CardContent className="p-4 flex items-center justify-between">
               <div className="space-y-1">
                 <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Calories</span>
@@ -298,7 +298,7 @@ export default async function DashboardPage() {
           </Card>
 
           {/* Protein */}
-          <Card className="bg-white border-slate-200 shadow-sm rounded-xl">
+          <Card className="bg-white border-slate-200 shadow-sm rounded-xl transition-all duration-300 hover:shadow-md hover:border-slate-300 hover:scale-[1.01]">
             <CardContent className="p-4 flex items-center justify-between">
               <div className="space-y-1">
                 <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Protein</span>
@@ -312,7 +312,7 @@ export default async function DashboardPage() {
           </Card>
 
           {/* Carbs */}
-          <Card className="bg-white border-slate-200 shadow-sm rounded-xl">
+          <Card className="bg-white border-slate-200 shadow-sm rounded-xl transition-all duration-300 hover:shadow-md hover:border-slate-300 hover:scale-[1.01]">
             <CardContent className="p-4 flex items-center justify-between">
               <div className="space-y-1">
                 <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Carbs</span>
@@ -326,7 +326,7 @@ export default async function DashboardPage() {
           </Card>
 
           {/* Fat */}
-          <Card className="bg-white border-slate-200 shadow-sm rounded-xl">
+          <Card className="bg-white border-slate-200 shadow-sm rounded-xl transition-all duration-300 hover:shadow-md hover:border-slate-300 hover:scale-[1.01]">
             <CardContent className="p-4 flex items-center justify-between">
               <div className="space-y-1">
                 <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Fat</span>
@@ -361,7 +361,7 @@ export default async function DashboardPage() {
 
       {/* Today's Focus Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card className="bg-white border border-slate-200 shadow-sm rounded-xl">
+        <Card className="bg-white border border-slate-200 shadow-sm rounded-xl transition-all duration-300 hover:shadow-md hover:border-slate-300 hover:scale-[1.005]">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
               <Activity className="w-4 h-4 text-indigo-650" /> Today's Workout Focus
@@ -388,7 +388,7 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="bg-white border border-slate-200 shadow-sm rounded-xl">
+        <Card className="bg-white border border-slate-200 shadow-sm rounded-xl transition-all duration-300 hover:shadow-md hover:border-slate-300 hover:scale-[1.005]">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
               <Utensils className="w-4 h-4 text-indigo-650" /> Today's Nutrition Focus

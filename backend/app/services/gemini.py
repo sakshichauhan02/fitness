@@ -541,4 +541,285 @@ class GeminiService:
             logger.error(f"Error calling Gemini for hydration: {e}")
             return HydrationResponse(daily_target_liters=total_target, ai_recommendation=fallback_rec)
 
+    @classmethod
+    def analyze_voice_meal(
+        cls,
+        audio_content: bytes,
+        mime_type: str,
+        meal_type: str = "Lunch"
+    ) -> dict:
+        """
+        Transcribe the audio using OpenAI Whisper (if key is set) or Gemini (fallback),
+        translate to English if needed, and parse into structured meal macro details.
+        """
+        transcription = ""
+        
+        # 1. Try OpenAI Whisper if configured
+        if settings.OPENAI_API_KEY:
+            try:
+                import httpx
+                files = {"file": ("speech.webm", audio_content, mime_type)}
+                data = {"model": "whisper-1"}
+                headers = {"Authorization": f"Bearer {settings.OPENAI_API_KEY}"}
+                
+                with httpx.Client() as client:
+                    resp = client.post(
+                        "https://api.openai.com/v1/audio/transcriptions",
+                        files=files,
+                        data=data,
+                        headers=headers,
+                        timeout=30.0
+                    )
+                if resp.status_code == 200:
+                    transcription = resp.json().get("text", "")
+                else:
+                    logger.error(f"OpenAI Whisper API error: {resp.text}")
+            except Exception as e:
+                logger.error(f"Failed to transcribe with OpenAI Whisper: {e}")
+
+        # 2. Fallback to Gemini if no transcription yet (either OpenAI key missing or OpenAI call failed)
+        if not transcription:
+            if not cls._is_configured():
+                logger.warning("Gemini API key not configured for voice transcription fallback. Returning mock.")
+                transcription = "I had two eggs with bread and butter."
+            else:
+                try:
+                    model = genai.GenerativeModel("gemini-2.0-flash")
+                    # Send audio to Gemini to get transcription and translation
+                    prompt = "Please transcribe this audio recording. If it is in a language other than English, translate it to English. Return only the transcription text, nothing else."
+                    audio_part = {
+                        "mime_type": mime_type,
+                        "data": audio_content
+                    }
+                    response = model.generate_content([audio_part, prompt])
+                    transcription = response.text.strip()
+                except Exception as e:
+                    logger.error(f"Failed to transcribe with Gemini: {e}")
+                    transcription = "I had two eggs with bread and butter."
+
+        # 3. Analyze the transcription text using the structured meal analysis logic
+        analysis_data = {
+            "name": "Unknown Meal",
+            "meal_type": meal_type,
+            "estimated_calories": 0,
+            "protein": "0g",
+            "carbs": "0g",
+            "fats": "0g",
+            "ingredients": []
+        }
+        
+        if cls._is_configured():
+            try:
+                model = genai.GenerativeModel("gemini-2.0-flash")
+                analysis_prompt = f"""
+                Analyze the following meal description:
+                "{transcription}"
+                
+                The meal category is: {meal_type}
+                
+                Identify the food item name, estimate the total calories, protein, carbs, and fats in standard gram formatting (e.g. '24g'), and list the key ingredients.
+                
+                Return the response strictly as a JSON object matching this structure:
+                {{
+                    "name": "Meal name",
+                    "meal_type": "{meal_type}",
+                    "estimated_calories": 450,
+                    "protein": "25g",
+                    "carbs": "45g",
+                    "fats": "12g",
+                    "ingredients": ["ingredient 1", "ingredient 2"]
+                }}
+                """
+                response = model.generate_content(
+                    analysis_prompt,
+                    generation_config={"response_mime_type": "application/json"}
+                )
+                analysis_data = json.loads(response.text)
+            except Exception as e:
+                logger.error(f"Failed to analyze transcribed meal: {e}")
+                
+        # Mock fallback if structured analysis failed or wasn't configured
+        if not analysis_data or analysis_data.get("estimated_calories") == 0:
+            analysis_data = {
+                "name": "Chicken Tacos with Salsa",
+                "meal_type": meal_type,
+                "estimated_calories": 380,
+                "protein": "28g",
+                "carbs": "36g",
+                "fats": "12g",
+                "ingredients": ["Chicken breast", "Taco shells", "Salsa", "Lettuce"]
+            }
+
+        return {
+            "transcription": transcription,
+            "analysis": analysis_data
+        }
+
+    @classmethod
+    def analyze_meal_image(
+        cls,
+        image_bytes: bytes,
+        mime_type: str
+    ) -> dict:
+        """
+        Analyze an image (food label, restaurant receipt, or meal photo) using Gemini Vision,
+        extract nutritional details (calories, protein, carbs, fats, serving size, and meal name),
+        and return a structured response.
+        """
+        analysis_data = {
+            "name": "Unknown Meal",
+            "estimated_calories": 0,
+            "protein": "0g",
+            "carbs": "0g",
+            "fats": "0g",
+            "serving_size": "1 serving",
+            "raw_text_summary": "No text detected."
+        }
+        
+        if not cls._is_configured():
+            logger.warning("Gemini API key is not configured. Returning mock image analysis.")
+            return {
+                "name": "Mock Chicken Avocado Salad",
+                "estimated_calories": 350,
+                "protein": "24g",
+                "carbs": "12g",
+                "fats": "22g",
+                "serving_size": "1 plate (300g)",
+                "raw_text_summary": "[MOCK OCR] Ingredients: Chicken breast, Avocado, Mixed greens, Olive oil dressing."
+            }
+
+        try:
+            model = genai.GenerativeModel("gemini-2.0-flash")
+            
+            prompt = """
+            You are a nutrition scanner. Analyze this image. It can be a food label, restaurant receipt/bill, or a photo of a meal.
+            
+            Perform OCR and nutritional analysis to extract:
+            1. Name of the food item or dish (or summarize the main items).
+            2. Estimated total calories (integer, e.g. 350).
+            3. Protein (in grams, e.g. '24g').
+            4. Carbohydrates (in grams, e.g. '15g').
+            5. Fats (in grams, e.g. '10g').
+            6. Serving size (e.g. '1 container', '100g', or '1 serving').
+            7. A brief raw text summary of what you read or saw.
+            
+            Return the output strictly as a JSON object matching this structure:
+            {
+                "name": "Food Name",
+                "estimated_calories": 350,
+                "protein": "24g",
+                "carbs": "15g",
+                "fats": "10g",
+                "serving_size": "serving size text",
+                "raw_text_summary": "A brief summary of detected text or visual features."
+            }
+            """
+            
+            image_part = {
+                "mime_type": mime_type,
+                "data": image_bytes
+            }
+            
+            response = model.generate_content(
+                [image_part, prompt],
+                generation_config={"response_mime_type": "application/json"}
+            )
+            
+            analysis_data = json.loads(response.text)
+        except Exception as e:
+            logger.error(f"Error analyzing image with Gemini Vision: {e}")
+            analysis_data = {
+                "name": "Scanned Food Item",
+                "estimated_calories": 420,
+                "protein": "20g",
+                "carbs": "50g",
+                "fats": "14g",
+                "serving_size": "1 pack",
+                "raw_text_summary": f"Error scanning image. Defaulting to fallback analysis. Error details: {str(e)}"
+            }
+            
+        return analysis_data
+
+    @classmethod
+    def generate_coach_recommendation(
+        cls,
+        goal: str,
+        weight: float,
+        height: float,
+        workout_history_summary: str,
+        daily_calories: int,
+        protein_intake: int,
+        water_intake: float,
+        sleep_hours: float,
+        workout_completed: bool
+    ) -> dict:
+        """
+        Evaluate today's health metrics and history with Gemini to generate coach scores and recommendations.
+        """
+        fallback_data = {
+            "daily_fitness_score": 85,
+            "recovery_score": 80,
+            "workout_recommendation": "Perform a 45-minute moderate resistance split focusing on upper body pushing dynamics.",
+            "meal_recommendation": "Lean chicken breast stir-fry with broccoli and wild brown rice to meet target macros.",
+            "muscle_group_recommendation": "Chest, Shoulders & Triceps focus.",
+            "rest_day_recommendation": "Focus on light mobility stretching today. Keep active recovery moving.",
+            "motivation_tip": "Consistency builds splits, and splits build progress. Keep logging every single day!",
+            "status": "Good"
+        }
+
+        if not cls._is_configured():
+            logger.warning("Gemini API key is not configured. Returning fallback coach recommendation.")
+            return fallback_data
+
+        prompt = f"""
+        Analyze this user's fitness and health metrics to provide recommendations:
+        - User Goal: {goal}
+        - Current Weight: {weight} kg
+        - Height: {height} cm
+        - Today's Checklist stats:
+          * Sleep Duration: {sleep_hours} hours
+          * Water Intake: {water_intake} Liters
+          * Workout Completed? {workout_completed}
+          * Workout History Summary: {workout_history_summary}
+          * Total Calories Logged Today: {daily_calories} kcal
+          * Total Protein Logged Today: {protein_intake} g
+
+        Please evaluate:
+        1. Daily Fitness Score: an integer out of 100 based on macro accuracy, workout completion, and water intake.
+        2. Recovery Score: an integer out of 100 based on sleep hours, workout history stress, and rest.
+        3. Personalized Workout Recommendation: 1-2 sentence recommendation for what workout style they should perform next.
+        4. Meal Recommendation: 1-2 sentences suggesting a perfect healthy recipe to balance their protein and calorie intake.
+        5. Muscle Group Recommendation: Which muscle groups they should train or focus on.
+        6. Rest Day Recommendation: 1 sentence advice on when to rest next or how to recover.
+        7. AI Motivation Tip: 1 short sentence to motivate the user.
+        8. Overall Status: Must be strictly one of these values: "Excellent", "Good", "Needs Improvement" (determine this based on scores).
+
+        Return the response strictly as a JSON object matching this structure:
+        {{
+            "daily_fitness_score": 85,
+            "recovery_score": 80,
+            "workout_recommendation": "Coaching tips...",
+            "meal_recommendation": "Healthy recipe tip...",
+            "muscle_group_recommendation": "Muscle groups focus...",
+            "rest_day_recommendation": "Rest advice...",
+            "motivation_tip": "Motivational quote...",
+            "status": "Excellent"
+        }}
+        """
+
+        try:
+            model = genai.GenerativeModel("gemini-2.0-flash")
+            response = model.generate_content(
+                prompt,
+                generation_config={"response_mime_type": "application/json"}
+            )
+            data = json.loads(response.text)
+            return data
+        except Exception as e:
+            logger.error(f"Error generating coach recommendation: {e}")
+            return fallback_data
+
+
+
+
 

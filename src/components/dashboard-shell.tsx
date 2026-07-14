@@ -64,11 +64,12 @@ export default function DashboardShell({ profile, children }: DashboardShellProp
   // Meal Log State
   const [mealName, setMealName] = useState('');
   const [calories, setCalories] = useState('');
-  const [macos, setMacros] = useState({ protein: '', carbs: '', fats: '' });
+  const [macros, setMacros] = useState({ protein: '', carbs: '', fats: '' });
   const [logSuccess, setLogSuccess] = useState(false);
 
   const navigation = [
     { name: 'Overview', href: '/dashboard', icon: LayoutDashboard },
+    { name: 'AI Coach', href: '/dashboard/coach', icon: Sparkles },
     { name: 'AI Smart Log', href: '/dashboard/smart-log', icon: BrainCircuit },
     { name: 'Workout Plan', href: '/dashboard/workout-plan', icon: Activity },
     { name: 'My Progress', href: '/dashboard/my-progress', icon: LineChart },
@@ -81,19 +82,65 @@ export default function DashboardShell({ profile, children }: DashboardShellProp
     window.location.href = '/login';
   };
 
-  const handleAddMealSubmit = (e: React.FormEvent) => {
+  const handleAddMealSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!mealName) return;
+    if (!mealName || !profile?.id) return;
     
-    // Simulate log
-    setLogSuccess(true);
-    setTimeout(() => {
-      setMealName('');
-      setCalories('');
-      setMacros({ protein: '', carbs: '', fats: '' });
-      setLogSuccess(false);
-      setShowAddMeal(false);
-    }, 1200);
+    let caloriesVal = parseInt(calories, 10) || 0;
+    let proteinVal = parseInt(macros.protein, 10) || 0;
+    let carbsVal = parseInt(macros.carbs, 10) || 0;
+    let fatVal = parseInt(macros.fats, 10) || 0;
+    const todayStr = getLocalDateString();
+    
+    try {
+      if (!calories) {
+        // Perform AI estimation if calories input is empty
+        const response = await fetch(`${API_BASE_URL}/nutrition/analyze-meal`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            description: mealName,
+            meal_type: 'Snack'
+          })
+        });
+        if (response.ok) {
+          const data = await response.json();
+          caloriesVal = data.estimated_calories || 0;
+          proteinVal = parseInt(data.protein.replace(/\D/g, ''), 10) || 0;
+          carbsVal = parseInt(data.carbs.replace(/\D/g, ''), 10) || 0;
+          fatVal = parseInt(data.fats.replace(/\D/g, ''), 10) || 0;
+        }
+      }
+      
+      const saveResponse = await fetch(`${API_BASE_URL}/history/meal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: profile.id,
+          date: todayStr,
+          name: mealName,
+          meal_type: 'Snack',
+          calories: caloriesVal,
+          protein: proteinVal,
+          carbs: carbsVal,
+          fats: fatVal
+        })
+      });
+      
+      if (saveResponse.ok) {
+        setLogSuccess(true);
+        setTimeout(() => {
+          setMealName('');
+          setCalories('');
+          setMacros({ protein: '', carbs: '', fats: '' });
+          setLogSuccess(false);
+          setShowAddMeal(false);
+          window.location.reload();
+        }, 1200);
+      }
+    } catch (err) {
+      console.error('Failed to log meal in shell modal:', err);
+    }
   };
 
   const getPageTitle = () => {
@@ -377,8 +424,8 @@ export default function DashboardShell({ profile, children }: DashboardShellProp
                           <Input
                             type="number"
                             placeholder="Pro (g)"
-                            value={macos.protein}
-                            onChange={(e) => setMacros({...macos, protein: e.target.value})}
+                            value={macros.protein}
+                            onChange={(e) => setMacros({...macros, protein: e.target.value})}
                             className="bg-white border-slate-200 text-slate-900 text-[11px] h-8 text-center rounded-lg focus:border-indigo-500 focus:ring-indigo-500"
                           />
                         </div>
@@ -386,8 +433,8 @@ export default function DashboardShell({ profile, children }: DashboardShellProp
                           <Input
                             type="number"
                             placeholder="Carbs (g)"
-                            value={macos.carbs}
-                            onChange={(e) => setMacros({...macos, carbs: e.target.value})}
+                            value={macros.carbs}
+                            onChange={(e) => setMacros({...macros, carbs: e.target.value})}
                             className="bg-white border-slate-200 text-slate-900 text-[11px] h-8 text-center rounded-lg focus:border-indigo-500 focus:ring-indigo-500"
                           />
                         </div>
@@ -395,8 +442,8 @@ export default function DashboardShell({ profile, children }: DashboardShellProp
                           <Input
                             type="number"
                             placeholder="Fats (g)"
-                            value={macos.fats}
-                            onChange={(e) => setMacros({...macos, fats: e.target.value})}
+                            value={macros.fats}
+                            onChange={(e) => setMacros({...macros, fats: e.target.value})}
                             className="bg-white border-slate-200 text-slate-900 text-[11px] h-8 text-center rounded-lg focus:border-indigo-500 focus:ring-indigo-500"
                           />
                         </div>

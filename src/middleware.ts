@@ -13,7 +13,16 @@ export async function middleware(request: NextRequest) {
   if (isMock) {
     const hasMockSession = request.cookies.has('fitai-mock-session');
     if (hasMockSession) {
-      user = { id: 'd3b07384-d113-4956-b5e1-fd581e1e2d9a', email: 'mock@example.com' };
+      const mockUserCookie = request.cookies.get('fitai-mock-user');
+      if (mockUserCookie?.value) {
+        try {
+          user = JSON.parse(decodeURIComponent(mockUserCookie.value));
+        } catch {
+          user = { id: 'd3b07384-d113-4956-b5e1-fd581e1e2d9a', email: 'mock@example.com' };
+        }
+      } else {
+        user = { id: 'd3b07384-d113-4956-b5e1-fd581e1e2d9a', email: 'mock@example.com' };
+      }
     }
   } else {
     const supabase = createServerClient(

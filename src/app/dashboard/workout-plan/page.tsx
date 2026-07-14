@@ -130,9 +130,36 @@ export default function WorkoutPlanPage() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[300px] gap-3">
-        <div className="w-8 h-8 border-4 border-indigo-650 border-t-transparent rounded-full animate-spin"></div>
-        <p className="text-xs text-slate-500 font-semibold">Loading your physical split details...</p>
+      <div className="space-y-6 max-w-5xl mx-auto px-4 py-6">
+        {/* HEADER SKELETON */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+          <div className="space-y-2">
+            <div className="h-6 w-48 bg-slate-200 rounded animate-pulse"></div>
+            <div className="h-3 w-80 bg-slate-100 rounded animate-pulse"></div>
+          </div>
+          <div className="flex gap-4">
+            <div className="h-8.5 w-36 bg-slate-100 rounded-lg animate-pulse"></div>
+            <div className="h-8.5 w-32 bg-slate-200 rounded-lg animate-pulse"></div>
+          </div>
+        </div>
+
+        {/* DETAILS SKELETON */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-4">
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 h-60 space-y-4">
+              <div className="h-4 w-40 bg-slate-200 rounded animate-pulse"></div>
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-12 bg-slate-55/60 rounded-xl animate-pulse"></div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="space-y-6">
+            <div className="bg-white border border-slate-200 rounded-xl p-4 h-48 animate-pulse"></div>
+            <div className="bg-white border border-slate-200 rounded-xl p-4 h-20 animate-pulse"></div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -141,7 +168,7 @@ export default function WorkoutPlanPage() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300 relative z-10 max-w-5xl mx-auto">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-5 rounded-2xl border border-slate-200 shadow-xs transition-all duration-350 hover:shadow-md hover:border-slate-300">
         <div>
           <h1 className="text-xl md:text-2xl font-extrabold text-slate-900 flex items-center gap-2">
             <Activity className="w-5.5 h-5.5 text-indigo-650" /> Workout Plan
@@ -159,23 +186,49 @@ export default function WorkoutPlanPage() {
             />
             <span>Feeling Sore Today?</span>
           </label>
-
+ 
           <Button 
             onClick={handleRebuildRoutine}
             disabled={generating}
             className="bg-indigo-650 hover:bg-indigo-750 text-white font-semibold text-xs px-3.5 h-8.5 rounded-lg flex items-center gap-1.5 shadow-sm cursor-pointer transition-transform duration-200 hover:scale-102"
           >
             {generating ? 'Regenerating...' : 'Generate New Routine'} 
-            <Sparkles className="w-4 h-4 text-white/80" />
+            <Sparkles className="w-4 h-4 text-white/80 animate-pulse" />
           </Button>
         </div>
       </div>
 
       {generating ? (
-        <div className="flex flex-col items-center justify-center min-h-[300px] bg-white border border-slate-200 shadow-sm rounded-2xl p-6 text-center gap-3">
-          <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-          <h2 className="text-sm font-bold text-slate-800">Analyzing physical bio-metrics...</h2>
-          <p className="text-xs text-slate-500 max-w-xs leading-normal">Gemini is structuring your rep goals, target intensities, and weight splits.</p>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-4">
+            <Card className="bg-white border border-slate-200 shadow-md rounded-2xl p-6 space-y-4">
+              <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+                <div className="space-y-2">
+                  <div className="h-4 w-32 bg-slate-200 rounded animate-pulse"></div>
+                  <div className="h-2.5 w-24 bg-slate-150 rounded animate-pulse"></div>
+                </div>
+                <div className="h-6 w-20 bg-slate-200 rounded-full animate-pulse"></div>
+              </div>
+              <div className="space-y-3">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="bg-slate-50/50 border border-slate-200/40 rounded-xl p-4 flex justify-between items-center">
+                    <div className="space-y-2 flex-1">
+                      <div className="h-2.5 w-16 bg-slate-200 rounded animate-pulse"></div>
+                      <div className="h-3 w-40 bg-slate-150/70 rounded animate-pulse"></div>
+                      <div className="h-2 w-3/4 bg-slate-100 rounded animate-pulse"></div>
+                    </div>
+                    <div className="h-6 w-16 bg-slate-200 rounded animate-pulse"></div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+          <div className="space-y-6">
+            <Card className="bg-white border border-slate-200 shadow-sm rounded-xl p-4 h-64 flex flex-col justify-center items-center space-y-3">
+              <div className="w-8 h-8 border-4 border-indigo-650 border-t-transparent rounded-full animate-spin"></div>
+              <p className="text-xs text-slate-550 font-bold">Structuring weekly splits...</p>
+            </Card>
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

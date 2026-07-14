@@ -68,3 +68,20 @@ class HydrationResponse(BaseModel):
     ai_recommendation: str = Field(..., description="AI generated recommendation for hydration timing and habits")
 
 
+class VoiceMealLogResponse(BaseModel):
+    transcription: str
+    analysis: MealAnalyzeResponse
+
+
+class OCRMealAnalysisResponse(BaseModel):
+    name: str
+    estimated_calories: int
+    protein: str
+    carbs: str
+    fats: str
+    serving_size: Optional[str] = "1 serving"
+    raw_text_summary: Optional[str] = ""
+
+
+
+

@@ -13,6 +13,16 @@ export async function createClient() {
     return {
       auth: {
         async getUser() {
+          const mockUserCookie = cookieStore.get('fitai-mock-user');
+          if (mockUserCookie?.value) {
+            try {
+              const decoded = decodeURIComponent(mockUserCookie.value);
+              const parsed = JSON.parse(decoded);
+              return { data: { user: parsed }, error: null };
+            } catch (err) {
+              console.error('Server Supabase: error parsing mock user cookie:', err);
+            }
+          }
           if (hasSession) {
             return { data: { user: { id: 'd3b07384-d113-4956-b5e1-fd581e1e2d9a', email: 'mock@example.com' } }, error: null };
           }

@@ -57,6 +57,7 @@ def get_history_range(user_id: UUID, start_date: date, end_date: date, db: Sessi
             history_map[d_str].weight = float(s.weight) if s.weight is not None else None
             history_map[d_str].water_intake = float(s.water_intake)
             history_map[d_str].workout_completed = s.workout_completed
+            history_map[d_str].sleep_hours = float(s.sleep_hours)
             
     # Populate meals and compute totals
     for m in meals:
@@ -96,6 +97,7 @@ def get_history_day(user_id: UUID, date_val: date, db: Session = Depends(get_db)
         weight=float(summary.weight) if (summary and summary.weight is not None) else None,
         water_intake=float(summary.water_intake) if summary else 0.0,
         workout_completed=summary.workout_completed if summary else False,
+        sleep_hours=float(summary.sleep_hours) if summary else 8.0,
         meals=meal_items,
         macro_totals=macro_totals
     )
@@ -146,7 +148,8 @@ def update_daily_summary(req: DailyUpdatePayload, db: Session = Depends(get_db))
             date=req.date,
             weight=req.weight,
             water_intake=req.water_intake if req.water_intake is not None else 0.0,
-            workout_completed=req.workout_completed if req.workout_completed is not None else False
+            workout_completed=req.workout_completed if req.workout_completed is not None else False,
+            sleep_hours=req.sleep_hours if req.sleep_hours is not None else 8.0
         )
         db.add(summary)
     else:
@@ -158,6 +161,9 @@ def update_daily_summary(req: DailyUpdatePayload, db: Session = Depends(get_db))
         if 'workout_completed' in fields_set:
             if req.workout_completed is not None:
                 summary.workout_completed = req.workout_completed
+        if 'sleep_hours' in fields_set:
+            if req.sleep_hours is not None:
+                summary.sleep_hours = req.sleep_hours
             
     try:
         db.commit()
@@ -181,6 +187,9 @@ def update_daily_summary(req: DailyUpdatePayload, db: Session = Depends(get_db))
         if 'workout_completed' in fields_set:
             if req.workout_completed is not None:
                 summary.workout_completed = req.workout_completed
+        if 'sleep_hours' in fields_set:
+            if req.sleep_hours is not None:
+                summary.sleep_hours = req.sleep_hours
         
         db.commit()
         db.refresh(summary)
@@ -205,6 +214,7 @@ def update_daily_summary(req: DailyUpdatePayload, db: Session = Depends(get_db))
         weight=float(summary.weight) if (summary.weight is not None) else None,
         water_intake=float(summary.water_intake),
         workout_completed=summary.workout_completed,
+        sleep_hours=float(summary.sleep_hours),
         meals=meal_items,
         macro_totals=macro_totals
     )

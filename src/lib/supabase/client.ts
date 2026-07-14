@@ -43,6 +43,7 @@ export function createClient() {
             
             // Ensure session and profile cookies are synchronized with localStorage in mock mode
             document.cookie = "fitai-mock-session=true; path=/; max-age=86400; SameSite=Lax";
+            document.cookie = `fitai-mock-user=${encodeURIComponent(JSON.stringify(mockUser))}; path=/; max-age=86400; SameSite=Lax`;
             const profile = localStorage.getItem('fitai_mock_profile');
             if (profile) {
               document.cookie = `fitai-mock-profile=${encodeURIComponent(profile)}; path=/; max-age=86400; SameSite=Lax`;
@@ -77,6 +78,7 @@ export function createClient() {
           const user = { id: userRecord.id, email: userRecord.email };
           localStorage.setItem('fitai_mock_user', JSON.stringify(user));
           document.cookie = "fitai-mock-session=true; path=/; max-age=86400; SameSite=Lax";
+          document.cookie = `fitai-mock-user=${encodeURIComponent(JSON.stringify(user))}; path=/; max-age=86400; SameSite=Lax`;
           
           if (userRecord.profile) {
             localStorage.setItem('fitai_mock_profile', JSON.stringify(userRecord.profile));
@@ -112,6 +114,7 @@ export function createClient() {
           const user = { id: mockUserId, email: normalizedEmail, raw_user_meta_data: options?.data || {} };
           localStorage.setItem('fitai_mock_user', JSON.stringify(user));
           document.cookie = "fitai-mock-session=true; path=/; max-age=86400; SameSite=Lax";
+          document.cookie = `fitai-mock-user=${encodeURIComponent(JSON.stringify(user))}; path=/; max-age=86400; SameSite=Lax`;
           
           localStorage.setItem('fitai_mock_profile', JSON.stringify(profile));
           document.cookie = `fitai-mock-profile=${encodeURIComponent(JSON.stringify(profile))}; path=/; max-age=86400; SameSite=Lax`;
@@ -122,6 +125,7 @@ export function createClient() {
           localStorage.removeItem('fitai_mock_user');
           localStorage.removeItem('fitai_mock_profile');
           document.cookie = "fitai-mock-session=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC; SameSite=Lax";
+          document.cookie = "fitai-mock-user=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC; SameSite=Lax";
           document.cookie = "fitai-mock-profile=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC; SameSite=Lax";
           return { error: null };
         }

@@ -16,8 +16,12 @@ import {
   Sparkles,
   Calendar,
   Smile,
-  Info
+  Info,
+  Mic,
+  Square,
+  Camera
 } from 'lucide-react';
+import { useRef } from 'react';
 import { Button } from '@/components/ui/button';
 
 interface Meal {
@@ -42,6 +46,230 @@ export default function SmartLogPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [gamificationStatus, setGamificationStatus] = useState<any>(null);
   const [profileSynced, setProfileSynced] = useState(false);
+
+  // Audio Recording States
+  const [recording, setRecording] = useState(false);
+
+  // OCR/Vision States
+  const [ocrUploading, setOcrUploading] = useState(false);
+  const [showOcrModal, setShowOcrModal] = useState(false);
+  const [ocrData, setOcrData] = useState({
+    name: '',
+    estimated_calories: 0,
+    protein: '',
+    carbs: '',
+    fats: '',
+    serving_size: '1 serving',
+    raw_text_summary: ''
+  });
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setOcrUploading(true);
+    setErrorMsg(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch(`${API_BASE_URL}/nutrition/analyze-image`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to analyze image with OCR.');
+      }
+
+      const data = await response.json();
+      setOcrData(data);
+      setShowOcrModal(true);
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(err.message || 'Failed to scan image. Please try again.');
+    } finally {
+      setOcrUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleOcrLogConfirm = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ocrData.name || !profile?.id) return;
+
+    setAnalyzing(true);
+    setErrorMsg(null);
+    try {
+      const todayStr = getLocalDateString();
+      const caloriesVal = ocrData.estimated_calories || 0;
+      const proVal = parseInt(ocrData.protein.replace(/\D/g, ''), 10) || 0;
+      const carbVal = parseInt(ocrData.carbs.replace(/\D/g, ''), 10) || 0;
+      const fatVal = parseInt(ocrData.fats.replace(/\D/g, ''), 10) || 0;
+
+      const saveResponse = await fetch(`${API_BASE_URL}/history/meal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: profile.id,
+          date: todayStr,
+          name: ocrData.name,
+          meal_type: mealType,
+          calories: caloriesVal,
+          protein: proVal,
+          carbs: carbVal,
+          fats: fatVal
+        })
+      });
+
+      if (saveResponse.ok) {
+        const newDbMeal = await saveResponse.json();
+        const newMeal: Meal = {
+          id: newDbMeal.id,
+          name: newDbMeal.name,
+          type: newDbMeal.meal_type,
+          cal: newDbMeal.calories,
+          pro: `${newDbMeal.protein}g`,
+          carb: `${newDbMeal.carbs}g`,
+          fat: `${newDbMeal.fats}g`
+        };
+
+        setMealHistory((prev) => [newMeal, ...prev]);
+        setShowOcrModal(false);
+      } else {
+        throw new Error('Failed to save OCR scanned meal to database.');
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Failed to log scanned meal.');
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  // Audio Recording States
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [sleepHours, setSleepHours] = useState(8.0);
+
+  const startRecording = async () => {
+    setVoiceError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      let mimeType = 'audio/webm';
+      if (!MediaRecorder.isTypeSupported('audio/webm')) {
+        if (MediaRecorder.isTypeSupported('audio/mp4')) {
+          mimeType = 'audio/mp4';
+        } else {
+          mimeType = '';
+        }
+      }
+      
+      const options = mimeType ? { mimeType } : undefined;
+      const recorder = new MediaRecorder(stream, options);
+      
+      const chunks: Blob[] = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunks.push(e.data);
+        }
+      };
+
+      recorder.onstop = async () => {
+        const audioBlob = new Blob(chunks, { type: mimeType || 'audio/webm' });
+        await handleVoiceUpload(audioBlob);
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      recorder.start();
+      setMediaRecorder(recorder);
+      setRecording(true);
+    } catch (err: any) {
+      console.error('Microphone access denied or unsupported:', err);
+      setVoiceError('Could not access microphone. Please check permissions.');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorder && recording) {
+      mediaRecorder.stop();
+      setRecording(false);
+    }
+  };
+
+  const handleVoiceUpload = async (audioBlob: Blob) => {
+    setAnalyzing(true);
+    setErrorMsg(null);
+    setVoiceError(null);
+    
+    try {
+      const formData = new FormData();
+      formData.append('file', audioBlob, 'voice-meal-log.webm');
+      formData.append('meal_type', mealType);
+
+      const response = await fetch(`${API_BASE_URL}/nutrition/voice-log`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to transcribe and analyze voice meal log.');
+      }
+
+      const data = await response.json();
+      setMealDescription(data.transcription);
+      
+      const analysis = data.analysis;
+      const caloriesVal = analysis.estimated_calories || 0;
+      const proVal = parseInt(analysis.protein.replace(/\D/g, ''), 10) || 0;
+      const carbVal = parseInt(analysis.carbs.replace(/\D/g, ''), 10) || 0;
+      const fatVal = parseInt(analysis.fats.replace(/\D/g, ''), 10) || 0;
+      const todayStr = getLocalDateString();
+      
+      if (!profile || !profile.id) {
+        throw new Error('Profile details not loaded yet.');
+      }
+
+      const saveResponse = await fetch(`${API_BASE_URL}/history/meal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: profile.id,
+          date: todayStr,
+          name: analysis.name,
+          meal_type: analysis.meal_type || mealType,
+          calories: caloriesVal,
+          protein: proVal,
+          carbs: carbVal,
+          fats: fatVal
+        })
+      });
+
+      if (saveResponse.ok) {
+        const newDbMeal = await saveResponse.json();
+        const newMeal: Meal = {
+          id: newDbMeal.id,
+          name: newDbMeal.name,
+          type: newDbMeal.meal_type,
+          cal: newDbMeal.calories,
+          pro: `${newDbMeal.protein}g`,
+          carb: `${newDbMeal.carbs}g`,
+          fat: `${newDbMeal.fats}g`
+        };
+
+        setMealHistory((prev) => [newMeal, ...prev]);
+        setMealDescription('');
+      } else {
+        throw new Error('Voice log transcribed, but failed to save to database.');
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Error processing voice recording.');
+    } finally {
+      setAnalyzing(false);
+    }
+  };
 
   const [mealHistory, setMealHistory] = useState<Meal[]>([
     { id: 1, name: 'Eggs Whites & Avocado Toast', type: 'Breakfast', cal: 380, pro: '24g', carb: '32g', fat: '14g' },
@@ -215,6 +443,8 @@ export default function SmartLogPage() {
             const historyRes = await fetch(`${API_BASE_URL}/history/day/${user.id}/${todayStr}`);
             if (historyRes.ok) {
               const historyData = await historyRes.json();
+              setWaterLogged(historyData.water_intake || 0.0);
+              setSleepHours(historyData.sleep_hours !== undefined ? historyData.sleep_hours : 8.0);
               if (historyData.meals && historyData.meals.length > 0) {
                 setMealHistory(historyData.meals.map((m: any) => ({
                   id: m.id,
@@ -225,7 +455,6 @@ export default function SmartLogPage() {
                   carb: `${m.carbs}g`,
                   fat: `${m.fats}g`
                 })));
-                setWaterLogged(historyData.water_intake);
               } else {
                 // Database is empty for today. Check legacy localStorage first
                 const storageKey = `fitai_meals_${user.id}_${todayStr}`;
@@ -563,6 +792,25 @@ export default function SmartLogPage() {
     }
   };
 
+  const handleUpdateSleep = async (hours: number) => {
+    setSleepHours(hours);
+    if (profile && profile.id) {
+      try {
+        await fetch(`${API_BASE_URL}/history/daily-update`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: profile.id,
+            date: getLocalDateString(),
+            sleep_hours: hours
+          })
+        });
+      } catch (err) {
+        console.error('Failed to update sleep hours:', err);
+      }
+    }
+  };
+
   const handleAddWater = async (amountLiters: number) => {
     const newAmount = parseFloat((waterLogged + amountLiters).toFixed(2));
     setWaterLogged(newAmount);
@@ -615,10 +863,10 @@ export default function SmartLogPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 pt-1">
-          {errorMsg && (
+          {(errorMsg || voiceError) && (
             <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-750">
               <Info className="w-4 h-4 text-red-600 shrink-0" />
-              <span>{errorMsg}</span>
+              <span>{errorMsg || voiceError}</span>
             </div>
           )}
 
@@ -648,6 +896,41 @@ export default function SmartLogPage() {
               className="w-full bg-white border border-slate-200 rounded-xl p-3.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 resize-none shadow-sm"
             />
             <div className="absolute bottom-3 right-3 flex items-center gap-2">
+              <input 
+                type="file"
+                ref={fileInputRef}
+                onChange={handleImageUpload}
+                accept="image/*"
+                className="hidden"
+              />
+              
+              <Button 
+                onClick={() => fileInputRef.current?.click()}
+                disabled={ocrUploading || recording}
+                type="button"
+                variant="outline"
+                className="bg-white border-slate-200 hover:bg-slate-50 text-[10px] px-3 h-7 rounded-lg flex items-center gap-1.5 transition-transform duration-200 hover:scale-102 cursor-pointer shadow-sm text-slate-700 disabled:opacity-50"
+              >
+                <Camera className="w-3.5 h-3.5 text-indigo-650" /> {ocrUploading ? 'Scanning...' : 'Upload Image'}
+              </Button>
+              {recording ? (
+                <Button 
+                  onClick={stopRecording}
+                  type="button"
+                  className="bg-rose-650 hover:bg-rose-700 text-white font-semibold text-[10px] px-3 h-7 rounded-lg flex items-center gap-1.5 transition-all duration-200 animate-pulse cursor-pointer shadow-sm border-0"
+                >
+                  <Square className="w-3.5 h-3.5 fill-white/10" /> Stop Recording
+                </Button>
+              ) : (
+                <Button 
+                  onClick={startRecording}
+                  type="button"
+                  variant="outline"
+                  className="bg-white border-slate-200 hover:bg-slate-50 text-[10px] px-3 h-7 rounded-lg flex items-center gap-1.5 transition-transform duration-200 hover:scale-102 cursor-pointer shadow-sm text-slate-700"
+                >
+                  <Mic className="w-3.5 h-3.5 text-indigo-650" /> Record Meal
+                </Button>
+              )}
               <Button 
                 onClick={() => setShowManualModal(true)}
                 type="button"
@@ -658,8 +941,8 @@ export default function SmartLogPage() {
               </Button>
               <Button 
                 onClick={handleAnalyzeMeal}
-                disabled={analyzing || !mealDescription.trim()}
-                className="bg-indigo-600 hover:bg-indigo-755 text-white font-semibold text-[10px] px-3 h-7 rounded-lg flex items-center gap-1.5 transition-transform duration-200 hover:scale-102 cursor-pointer shadow-sm disabled:opacity-50 disabled:scale-100"
+                disabled={analyzing || !mealDescription.trim() || recording || ocrUploading}
+                className="bg-indigo-650 hover:bg-indigo-755 text-white font-semibold text-[10px] px-3 h-7 rounded-lg flex items-center gap-1.5 transition-transform duration-200 hover:scale-102 cursor-pointer shadow-sm disabled:opacity-50 disabled:scale-100"
               >
                 {analyzing ? 'Analyzing...' : 'Analyze Meal'} 
                 <Sparkles className="w-3 h-3 text-white/80" />
@@ -772,6 +1055,115 @@ export default function SmartLogPage() {
                 >
                   Log Meal
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* OCR CONFIRMATION MODAL */}
+      {showOcrModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+          <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-sm shadow-xl p-5 relative space-y-4 animate-in zoom-in-95 duration-200">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-indigo-600" /> Confirm OCR Scan
+              </h3>
+              <p className="text-[10px] text-slate-500">
+                Verify and edit the nutrition information extracted from your image scan.
+              </p>
+            </div>
+            
+            <form onSubmit={handleOcrLogConfirm} className="space-y-3.5">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-650">Food Name</label>
+                <input 
+                  type="text"
+                  required
+                  value={ocrData.name}
+                  onChange={(e) => setOcrData({...ocrData, name: e.target.value})}
+                  className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-650">Calories (kcal)</label>
+                  <input 
+                    type="number"
+                    required
+                    value={ocrData.estimated_calories}
+                    onChange={(e) => setOcrData({...ocrData, estimated_calories: parseInt(e.target.value, 10) || 0})}
+                    className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-650">Serving Size</label>
+                  <input 
+                    type="text"
+                    value={ocrData.serving_size || ''}
+                    onChange={(e) => setOcrData({...ocrData, serving_size: e.target.value})}
+                    className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-650">Protein</label>
+                  <input 
+                    type="text"
+                    required
+                    value={ocrData.protein}
+                    onChange={(e) => setOcrData({...ocrData, protein: e.target.value})}
+                    className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 text-center focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-650">Carbs</label>
+                  <input 
+                    type="text"
+                    required
+                    value={ocrData.carbs}
+                    onChange={(e) => setOcrData({...ocrData, carbs: e.target.value})}
+                    className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 text-center focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-650">Fats</label>
+                  <input 
+                    type="text"
+                    required
+                    value={ocrData.fats}
+                    onChange={(e) => setOcrData({...ocrData, fats: e.target.value})}
+                    className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-900 text-center focus:outline-none focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+
+              {ocrData.raw_text_summary && (
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-2 max-h-[80px] overflow-y-auto">
+                  <p className="text-[9px] text-slate-500 font-medium">Detected Text / Vision Scan Summary:</p>
+                  <p className="text-[9px] text-slate-600 mt-0.5 leading-relaxed">{ocrData.raw_text_summary}</p>
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-2">
+                <Button 
+                  onClick={() => setShowOcrModal(false)}
+                  type="button"
+                  variant="outline"
+                  className="flex-1 bg-white border-slate-200 text-slate-700 hover:bg-slate-50 text-[10px] h-8 rounded-lg cursor-pointer"
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  type="submit"
+                  disabled={analyzing}
+                  className="flex-1 bg-indigo-650 hover:bg-indigo-755 text-white font-semibold text-[10px] h-8 rounded-lg cursor-pointer disabled:opacity-50"
+                >
+                  {analyzing ? 'Saving...' : 'Confirm & Log'}
+                </Button>
               </div>
             </form>
           </div>
@@ -945,6 +1337,21 @@ export default function SmartLogPage() {
                     <option value="Moderately Active">Moderately Active (3-5 days/wk)</option>
                     <option value="Very Active">Very Active (6-7 days/wk)</option>
                   </select>
+                </div>
+                
+                <div className="flex flex-col gap-1 border-t border-slate-100 pt-3 mt-1">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    Sleep Duration (hours)
+                  </span>
+                  <input 
+                    type="number"
+                    min={0}
+                    max={24}
+                    step={0.5}
+                    value={sleepHours}
+                    onChange={(e) => handleUpdateSleep(parseFloat(e.target.value) || 0.0)}
+                    className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs text-slate-800 focus:outline-none focus:border-indigo-500 shadow-sm"
+                  />
                 </div>
               </div>
 

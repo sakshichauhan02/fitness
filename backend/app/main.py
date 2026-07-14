@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .routers import profile, workout, nutrition, gamification, history
+from .routers import profile, workout, nutrition, gamification, history, coach
 from .database import engine, Base
 from . import models  # Import models to register them on Base metadata
 
@@ -28,6 +28,7 @@ app.include_router(workout.router)
 app.include_router(nutrition.router)
 app.include_router(gamification.router)
 app.include_router(history.router)
+app.include_router(coach.router)
 
 @app.get("/")
 def read_root():

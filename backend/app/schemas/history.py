@@ -33,6 +33,7 @@ class DailyUpdatePayload(BaseModel):
     weight: Optional[float] = None
     water_intake: Optional[float] = None
     workout_completed: Optional[bool] = None
+    sleep_hours: Optional[float] = None
 
 class MacroTotals(BaseModel):
     calories: int = 0
@@ -45,6 +46,7 @@ class DailyHistoryDayResponse(BaseModel):
     weight: Optional[float] = None
     water_intake: float = 0.0
     workout_completed: bool = False
+    sleep_hours: float = 8.0
     meals: List[MealLogItem] = []
     macro_totals: MacroTotals = Field(default_factory=MacroTotals)
 
